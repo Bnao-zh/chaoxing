@@ -143,6 +143,7 @@ poetry.lock
 # Custom files
 .cookies.txt
 cookies.txt
+cookies_*.txt
 .config.ini
 config.ini
 chaoxing.log
@@ -151,6 +152,7 @@ config*.ini
 ./config.ini
 ./chaoxing.log
 ./cookies.txt
+./cookies_*.txt
 .idea/
 .vscode/
 cache.json

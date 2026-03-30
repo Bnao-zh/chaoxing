@@ -43,6 +43,8 @@ class SessionManager:
         return cls._instance
 
     def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
         self._session = requests.Session()
         self._session.mount("https://", HTTPAdapter(max_retries=10))
         self._session.mount("http://", HTTPAdapter(max_retries=10))
@@ -51,7 +53,9 @@ class SessionManager:
         # self._session.verify=False
         self._session.headers.clear()
         self._session.headers.update(gc.HEADERS)
-        self._session.cookies.update(use_cookies())
+        self._cookies_account = None
+        self._session.cookies.update(use_cookies(account=self._cookies_account))
+        self._initialized = True
 
     @classmethod
     def get_instance(cls) -> Self:
@@ -63,8 +67,11 @@ class SessionManager:
         return instance._session
 
     @classmethod
-    def update_cookies(cls):
-        cls.get_instance()._session.cookies.update(use_cookies())
+    def update_cookies(cls, account: Optional[str] = None):
+        instance = cls.get_instance()
+        instance._cookies_account = account.strip() if account else None
+        instance._session.cookies.clear()
+        instance._session.cookies.update(use_cookies(account=instance._cookies_account))
 
 
 class Account:
@@ -120,11 +127,21 @@ class Chaoxing:
         self.rollback_times = 0
         self.rate_limiter = RateLimiter(0.5) # 其他接口速率限制比较松
         self.video_log_limiter = RateLimiter(2) # 上报进度极其容易卡验证码，限制2s一次
+        SessionManager.update_cookies(self._get_cookie_account())
+
+    def _get_cookie_account(self) -> Optional[str]:
+        if self.account is None:
+            return None
+        username = self.account.username
+        if username is None:
+            return None
+        username = str(username).strip()
+        return username or None
 
     def login(self, login_with_cookies=False):
         if login_with_cookies:
             logger.info("Logging in with cookies")
-            SessionManager.update_cookies()
+            SessionManager.update_cookies(self._get_cookie_account())
             logger.debug(f"Logged in with cookies: {SessionManager.get_instance()._session.cookies}")
             if not self._validate_cookie_session():
                 logger.warning("Cookie 登录校验失败，尝试使用账号密码重新登录")
@@ -150,8 +167,8 @@ class Chaoxing:
         logger.trace("正在尝试登录...")
         resp = _session.post(_url, headers=gc.HEADERS, data=_data)
         if resp and resp.json()["status"] == True:
-            save_cookies(_session)
-            SessionManager.update_cookies()
+            save_cookies(_session, account=self._get_cookie_account())
+            SessionManager.update_cookies(self._get_cookie_account())
             logger.info("登录成功...")
             return {"status": True, "msg": "登录成功"}
         else:
